@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Prompter">
+<meta name="theme-color" content="#000000">
+<title>Prompter de Bolsillo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: cámara a pantalla completa; guion en "isla" junto al lente; barra de pestañas flotante abajo. Tema oscuro único (app de cámara). */
+:root{
+  --bg:#000; --glass:rgba(18,18,20,.82); --glass2:rgba(255,255,255,.10);
+  --fg:#f4f4f2; --dim:#9a9aa0; --done:#5a5a60; --accent:#4da3ff; --rec:#ff3b30; --ok:#34c759;
+  --font:"Atkinson Hyperlegible",-apple-system,system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
+button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- Vista Grabar ---------- */
+#vRec{position:fixed;inset:0}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111}
+#cam.mirror{transform:scaleX(-1)}
+#camMsg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--dim)}
+#camMsg button{margin-top:14px;background:var(--accent);color:#fff;padding:12px 20px;border-radius:14px;font-weight:700;font-size:16px}
+
+#island{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 8px);
+  width:min(92vw,460px);background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-radius:34px;padding:12px 14px 14px;display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+#island .side{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding-top:18px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;background:var(--glass2);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.chip svg{width:14px;height:14px}
+#modeChip{color:var(--accent)}
+#timer{font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace}
+#timer .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+#timer.on .dot{background:var(--rec);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+#lens{position:absolute;top:10px;left:50%;width:7px;height:7px;border-radius:50%;background:var(--ok);transform:translateX(-50%);box-shadow:0 0 8px var(--ok)}
+#prompt{position:relative;margin-top:16px;height:calc(var(--fs) * 1.32 * var(--lines));overflow:hidden;
+  font-size:var(--fs);line-height:1.32;font-weight:700;--fs:19px;--lines:4;
+  -webkit-mask-image:linear-gradient(#0000,#000 18%,#000 82%,#0000);mask-image:linear-gradient(#0000,#000 18%,#000 82%,#0000)}
+#promptInner{transition:transform .35s ease;padding-block:calc(var(--fs) * 1.32)}
+#promptInner span{color:var(--fg);transition:color .2s}
+#promptInner span.done{color:var(--done)}
+#promptInner span.cur{color:var(--accent)}
+#promptInner.mirror{transform-origin:center}
+#prompt.flip{transform:scaleX(-1)}
+#gear{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:50%;background:var(--glass2);display:grid;place-items:center}
+#gear svg{width:20px;height:20px}
+
+#controls{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);display:flex;justify-content:center;align-items:center;gap:34px}
+.round{width:48px;height:48px;border-radius:50%;background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:grid;place-items:center}
+.round svg{width:22px;height:22px}
+#recBtn{width:84px;height:84px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center;background:rgba(255,59,48,.18)}
+#recBtn i{width:62px;height:62px;border-radius:50%;background:var(--rec);transition:all .2s}
+#recBtn.on i{width:30px;height:30px;border-radius:7px}
+#countdown{position:absolute;inset:0;display:grid;place-items:center;font-size:120px;font-weight:700;pointer-events:none;text-shadow:0 4px 30px #000}
+
+/* ---------- Barra de pestañas ---------- */
+#tabs{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 12px);z-index:20;
+  width:min(94vw,460px);display:grid;grid-template-columns:repeat(4,1fr);background:rgba(245,245,247,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-radius:30px;padding:6px}
+#tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:24px;color:#1c1c1e;font-size:12px;font-weight:700}
+#tabs button svg{width:24px;height:24px}
+#tabs button[aria-selected="true"]{background:rgba(0,0,0,.08);color:#0a84ff}
+
+/* ---------- Vistas de lista ---------- */
+.page{position:fixed;inset:0;overflow-y:auto;padding:calc(env(safe-area-inset-top,0px) + 18px) max(16px,env(safe-area-inset-right,0px)) 130px max(16px,env(safe-area-inset-left,0px));background:#0d0d0f}
+.page h1{font-size:30px;margin:6px 0 16px;text-wrap:balance}
+.row{display:flex;gap:10px;align-items:center}
+.btn{background:var(--accent);color:#fff;font-weight:700;padding:11px 16px;border-radius:12px;font-size:15px}
+.btn.ghost{background:var(--glass2);color:var(--fg)}
+.btn.danger{background:rgba(255,59,48,.16);color:#ff6b62}
+.list{display:flex;flex-direction:column;gap:10px}
+.item{background:#1a1a1d;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;border:1.5px solid transparent}
+.item.active{border-color:var(--accent)}
+.item h3{margin:0;font-size:17px}
+.item p{margin:0;color:var(--dim);font-size:14px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meta{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.empty{color:var(--dim);text-align:center;padding:40px 10px;line-height:1.5}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--dim);font-weight:700;letter-spacing:.02em}
+input[type=text],textarea,select{background:#1a1a1d;color:var(--fg);border:1px solid #2c2c30;border-radius:12px;padding:12px;font:inherit;font-size:16px;width:100%}
+textarea{min-height:46vh;resize:vertical;line-height:1.45}
+.set{background:#1a1a1d;border-radius:16px;padding:4px 14px;display:flex;flex-direction:column}
+.set > div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #26262a}
+.set > div:last-child{border-bottom:0}
+.set span small{display:block;color:var(--dim);font-size:12px;margin-top:2px;font-weight:400}
+.set input[type=range]{width:46%}
+.set select{width:auto}
+.seg{display:flex;background:#26262a;border-radius:10px;padding:2px}
+.seg button{padding:7px 12px;border-radius:8px;font-size:14px;font-weight:700;color:var(--dim)}
+.seg button.on{background:#3a3a3f;color:var(--fg)}
+.sw{appearance:none;-webkit-appearance:none;width:50px;height:30px;border-radius:30px;background:#3a3a3f;position:relative;transition:.2s;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
+.sw:checked{background:var(--ok)}.sw:checked::after{left:23px}
+video.thumb{width:100%;border-radius:12px;background:#000;max-height:60vh}
+.note{color:var(--dim);font-size:13px;line-height:1.5;margin-top:14px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 100px);background:#2c2c30;color:var(--fg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:50;transition:opacity .3s;opacity:0;pointer-events:none}
+#toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ======== GRABAR ======== -->
+<section id="vRec">
+  <video id="cam" playsinline autoplay muted class="mirror"></video>
+  <div id="camMsg" hidden><div><div id="camMsgText">Toca para activar la cámara y el micrófono.</div><button id="camStart">Activar cámara</button></div></div>
+
+  <div id="island">
+    <span id="lens" aria-hidden="true"></span>
+    <div class="side">
+      <span class="chip" id="modeChip"></span>
+      <span class="chip" id="timer"><i class="dot"></i><b id="tm">0:00</b></span>
+    </div>
+    <div id="prompt" aria-live="off"><div id="promptInner"></div></div>
+    <button id="gear" aria-label="Ajustes rápidos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+  </div>
+
+  <div id="countdown" hidden></div>
+
+  <div id="controls">
+    <button class="round" id="resetBtn" aria-label="Volver al inicio del guion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+    <button id="recBtn" aria-label="Grabar"><i></i></button>
+    <button class="round" id="flipBtn" aria-label="Cambiar cámara"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3l-2-3H9L7 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/><path d="M14.5 9.5v1.7h-1.7M9.5 16.5v-1.7h1.7"/></svg></button>
+  </div>
+</section>
+
+<!-- ======== GUIONES ======== -->
+<section id="vScripts" class="page" hidden>
+  <div class="row" style="justify-content:space-between"><h1>Mis guiones</h1><button class="btn" id="newScript">+ Nuevo</button></div>
+  <div class="list" id="scriptList"></div>
+</section>
+
+<section id="vEdit" class="page" hidden>
+  <div class="row" style="justify-content:space-between;margin-bottom:14px">
+    <button class="btn ghost" id="editBack">‹ Guiones</button>
+    <button class="btn" id="editSave">Guardar</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <label class="f">Título<input type="text" id="edTitle" placeholder="Ej. Video de presentación"></label>
+    <label class="f">Texto del guion<textarea id="edBody" placeholder="Escribe o pega aquí lo que vas a decir…"></textarea></label>
+    <div class="meta" id="edMeta"></div>
+    <div class="row"><button class="btn" id="editUse">Usar y grabar</button><button class="btn danger" id="editDel">Eliminar</button></div>
+  </div>
+</section>
+
+<!-- ======== VIDEOS ======== -->
+<section id="vVideos" class="page" hidden>
+  <h1>Mis videos</h1>
+  <div class="list" id="videoList"></div>
+  <p class="note">Los videos se guardan solo en este teléfono, dentro del navegador. Usa «Guardar / compartir» para pasarlos a Fotos, WhatsApp o Drive.</p>
+</section>
+
+<!-- ======== AJUSTES ======== -->
+<section id="vSettings" class="page" hidden>
+  <h1>Ajustes</h1>
+  <div class="set">
+    <div><span>Modo de avance<small>Voz sigue lo que dices; Auto avanza solo</small></span>
+      <div class="seg" id="segMode"><button data-v="voice">Voz</button><button data-v="auto">Auto</button></div></div>
+    <div><span>Velocidad Auto<small id="wpmLbl"></small></span><input type="range" id="sWpm" min="80" max="220" step="5"></div>
+    <div><span>Tamaño de letra<small id="fsLbl"></small></span><input type="range" id="sFs" min="15" max="30" step="1"></div>
+    <div><span>Líneas visibles<small id="lnLbl"></small></span><input type="range" id="sLines" min="2" max="7" step="1"></div>
+    <div><span>Idioma de voz</span>
+      <select id="sLang"><option value="es-CO">Español (Colombia)</option><option value="es-ES">Español (España)</option><option value="es-MX">Español (México)</option><option value="en-US">English (US)</option></select></div>
+    <div><span>Cuenta regresiva<small>3 segundos antes de grabar</small></span><input type="checkbox" class="sw" id="sCount"></div>
+    <div><span>Vista espejo<small>Solo la vista previa; el video sale normal</small></span><input type="checkbox" class="sw" id="sMirror"></div>
+    <div><span>Calidad</span><select id="sRes"><option value="720">720p</option><option value="1080">1080p</option></select></div>
+  </div>
+  <p class="note">Consejo: pon el guion lo más cerca posible del lente (arriba) y usa 3–4 líneas; así tus ojos casi no se mueven y parece que miras a la cámara.<br><br>El modo Voz usa el reconocimiento de voz del navegador (Safari en iPhone). Si no lo reconoce bien con ruido de fondo, cambia a Auto.</p>
+</section>
+
+<nav id="tabs" role="tablist">
+  <button role="tab" data-v="vRec" aria-selected="true"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6" width="14" height="12" rx="3"/><path d="M17 10.5l5-3v9l-5-3z"/></svg>Grabar</button>
+  <button role="tab" data-v="vScripts"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V8h4.5zM8 12v1.6h8V12zm0 4v1.6h8V16z"/></svg>Mis guiones</button>
+  <button role="tab" data-v="vVideos"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 8.5v7l6-3.5z" fill="#f5f5f7"/></svg>Mis videos</button>
+  <button role="tab" data-v="vSettings"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.2h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.2 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>Ajustes</button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const store={get(k,d){try{const v=localStorage.getItem('tp_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+             set(k,v){try{localStorage.setItem('tp_'+k,JSON.stringify(v))}catch(e){}}};
+const toast=t=>{const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),2200)};
+
+/* ---------- Estado ---------- */
+const S=Object.assign({mode:'voice',wpm:140,fs:19,lines:4,lang:'es-CO',count:true,mirror:true,res:'720',facing:'user'},store.get('settings',{}));
+const saveS=()=>store.set('settings',S);
+let scripts=store.get('scripts',null);
+if(!scripts){scripts=[{id:Date.now(),title:'Ejemplo: video de presentación',body:'Hola, soy Sebas. Esta es una prueba de mi teleprompter. El texto avanza a medida que hablo, así que no tengo que tocar nada antes de avanzar. Puedo mantener la mirada en la cámara, sonar natural y terminar esto en una sola toma. Si me equivoco, sigo hablando y el guion me alcanza.',updated:Date.now()}];store.set('scripts',scripts)}
+let activeId=store.get('active',scripts[0]?.id);
+const active=()=>scripts.find(s=>s.id===activeId)||scripts[0];
+
+/* ---------- Navegación ---------- */
+function show(v){
+  ['vRec','vScripts','vEdit','vVideos','vSettings'].forEach(id=>$('#'+id).hidden=id!==v);
+  document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===v||(v==='vEdit'&&b.dataset.v==='vScripts')));
+  if(v==='vRec'){renderPrompt();ensureCam()}
+  if(v==='vScripts')renderScripts();
+  if(v==='vVideos')renderVideos();
+  if(v==='vSettings')renderSettings();
+}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{if(recording)return toast('Detén la grabación primero');show(b.dataset.v)});
+
+/* ---------- Teleprompter ---------- */
+const norm=w=>w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9ñ]/g,'');
+let words=[],keys=[],pos=0;
+function renderPrompt(){
+  const sc=active();
+  const inner=$('#promptInner');inner.innerHTML='';
+  words=(sc?sc.body:'Crea un guion en «Mis guiones».').split(/\s+/).filter(Boolean);
+  keys=words.map(norm);
+  words.forEach((w,i)=>{const sp=document.createElement('span');sp.textContent=w+' ';sp.dataset.i=i;inner.appendChild(sp)});
+  $('#prompt').style.setProperty('--fs',S.fs+'px');$('#prompt').style.setProperty('--lines',S.lines);
+  $('#modeChip').innerHTML=S.mode==='voice'
+    ?'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4" stroke="currentColor" stroke-width="2" fill="none"/></svg>Voz'
+    :'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l14 8-14 8z"/></svg>Auto';
+  $('#cam').classList.toggle('mirror',S.mirror&&S.facing==='user');
+  setPos(0,true);
+}
+function setPos(p,instant){
+  pos=Math.max(0,Math.min(words.length,p));
+  const spans=$('#promptInner').children;
+  for(let i=0;i<spans.length;i++){spans[i].className=i<pos?'done':i===pos?'cur':''}
+  const cur=spans[Math.min(pos,spans.length-1)];if(!cur)return;
+  const lh=S.fs*1.32;
+  const y=cur.offsetTop-lh; // línea actual en la 2ª fila visible
+  const inner=$('#promptInner');
+  if(instant){inner.style.transition='none';requestAnimationFrame(()=>inner.style.transition='')}
+  inner.style.transform=`translateY(${-Math.max(0,y-lh)}px)`;
+}
+$('#resetBtn').onclick=()=>{setPos(0);heard=[]};
+$('#gear').onclick=()=>{if(!recording)show('vSettings')};
+
+/* Avance por voz: compara lo escuchado con las palabras siguientes del guion */
+let rec=null,heard=[],recOn=false;
+function matchHeard(tail){
+  // busca la última palabra reconocida dentro de una ventana adelante
+  const W=10;
+  for(let k=tail.length-1;k>=Math.max(0,tail.length-3);k--){
+    const w=tail[k];if(!w||w.length<2&&tail.length>1)continue;
+    for(let j=pos;j<Math.min(keys.length,pos+W);j++){
+      if(keys[j]===w){
+        // confirma con la palabra anterior si existe, para evitar saltos con palabras comunes
+        const prevOk=k===0||j===0||keys[j-1]===tail[k-1]||j-pos<=3;
+        if(prevOk){setPos(j+1);return}
+      }
+    }
+  }
+}
+function startVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Este navegador no tiene reconocimiento de voz. Usa modo Auto.');startAuto();return}
+  rec=new SR();rec.lang=S.lang;rec.continuous=true;rec.interimResults=true;
+  rec.onresult=e=>{
+    let txt='';for(let i=e.resultIndex;i<e.results.length;i++)txt+=e.results[i][0].transcript+' ';
+    const tail=txt.split(/\s+/).map(norm).filter(Boolean).slice(-5);
+    matchHeard(tail);
+  };
+  rec.onerror=e=>{if(e.error==='not-allowed'){toast('Permite el micrófono para el modo Voz');recOn=false}};
+  rec.onend=()=>{if(recOn){try{rec.start()}catch(e){}}};
+  recOn=true;try{rec.start()}catch(e){}
+}
+function stopVoice(){recOn=false;if(rec){try{rec.stop()}catch(e){}rec=null}}
+
+let autoT=null;
+function startAuto(){const ms=60000/S.wpm;autoT=setInterval(()=>{if(pos>=words.length)return;setPos(pos+1)},ms)}
+function stopAuto(){clearInterval(autoT);autoT=null}
+
+/* ---------- Cámara ---------- */
+let stream=null;
+async function ensureCam(force){
+  if(stream&&!force)return;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  const h=+S.res,w=h===1080?1920:1280;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:S.facing,width:{ideal:h},height:{ideal:w}},audio:{echoCancellation:true,noiseSuppression:true}});
+    $('#cam').srcObject=stream;$('#camMsg').hidden=true;
+  }catch(e){
+    $('#camMsg').hidden=false;
+    $('#camMsgText').textContent=location.protocol==='https:'||location.hostname==='localhost'
+      ?'No se pudo abrir la cámara. Revisa los permisos de Safari para este sitio.'
+      :'La cámara solo funciona si la app se abre desde https (por ejemplo GitHub Pages).';
+  }
+}
+$('#camStart').onclick=()=>ensureCam(true);
+$('#flipBtn').onclick=()=>{if(recording)return;S.facing=S.facing==='user'?'environment':'user';saveS();$('#cam').classList.toggle('mirror',S.mirror&&S.facing==='user');ensureCam(true)};
+
+/* ---------- Grabación ---------- */
+let mr=null,chunks=[],recording=false,t0=0,tick=null;
+const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+function pickMime(){const c=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9,opus','video/webm'];return c.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m))||''}
+async function countdown(){
+  if(!S.count)return;
+  const el=$('#countdown');el.hidden=false;
+  for(let n=3;n>0;n--){el.textContent=n;await new Promise(r=>setTimeout(r,800))}
+  el.hidden=true;
+}
+$('#recBtn').onclick=async()=>{
+  if(recording)return stopRec();
+  await ensureCam();if(!stream)return;
+  if(!window.MediaRecorder)return toast('Este navegador no permite grabar video');
+  if(pos>=words.length)setPos(0);
+  await countdown();
+  chunks=[];const mime=pickMime();
+  mr=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
+  mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  mr.onstop=saveRec;
+  mr.start(1000);recording=true;t0=Date.now();
+  $('#recBtn').classList.add('on');$('#recBtn').setAttribute('aria-label','Detener');$('#timer').classList.add('on');
+  tick=setInterval(()=>$('#tm').textContent=fmt((Date.now()-t0)/1000),250);
+  try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
+  S.mode==='voice'?startVoice():startAuto();
+};
+let wake=null;
+function stopRec(){
+  recording=false;stopVoice();stopAuto();clearInterval(tick);
+  $('#recBtn').classList.remove('on');$('#recBtn').setAttribute('aria-label','Grabar');$('#timer').classList.remove('on');
+  try{wake?.release()}catch(e){}
+  if(mr&&mr.state!=='inactive')mr.stop();
+}
+async function saveRec(){
+  const type=mr.mimeType||chunks[0]?.type||'video/mp4';
+  const blob=new Blob(chunks,{type});
+  const dur=(Date.now()-t0)/1000;
+  await db.put({id:Date.now(),title:active()?.title||'Video',dur,type,blob,date:Date.now()});
+  toast('Video guardado en «Mis videos»');
+}
+
+/* ---------- IndexedDB para videos ---------- */
+const db={
+  open(){return this.p||(this.p=new Promise((res,rej)=>{const r=indexedDB.open('prompter',1);r.onupgradeneeded=()=>r.result.createObjectStore('videos',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))},
+  async tx(mode,fn){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction('videos',mode);const st=t.objectStore('videos');const r=fn(st);t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error)})},
+  put(v){return this.tx('readwrite',s=>s.put(v))},
+  all(){return this.tx('readonly',s=>s.getAll())},
+  del(id){return this.tx('readwrite',s=>s.delete(id))}
+};
+let urls=[];
+async function renderVideos(){
+  urls.forEach(u=>URL.revokeObjectURL(u));urls=[];
+  const list=$('#videoList');list.innerHTML='';
+  let vids=[];try{vids=(await db.all()).sort((a,b)=>b.date-a.date)}catch(e){}
+  if(!vids.length){list.innerHTML='<div class="empty">Aún no hay videos.<br>Graba tu primera toma en la pestaña «Grabar».</div>';return}
+  vids.forEach(v=>{
+    const u=URL.createObjectURL(v.blob);urls.push(u);
+    const ext=v.type.includes('mp4')?'mp4':'webm';
+    const d=document.createElement('div');d.className='item';
+    d.innerHTML=`<video class="thumb" controls playsinline preload="metadata" src="${u}#t=0.1"></video>
+      <h3></h3><div class="meta">${new Date(v.date).toLocaleString('es-CO',{dateStyle:'medium',timeStyle:'short'})} · ${fmt(v.dur)} · ${(v.blob.size/1048576).toFixed(1)} MB</div>
+      <div class="row"><button class="btn" data-a="share">Guardar / compartir</button><button class="btn danger" data-a="del">Eliminar</button></div>`;
+    d.querySelector('h3').textContent=v.title;
+    d.querySelector('[data-a=share]').onclick=async()=>{
+      const file=new File([v.blob],`${v.title.replace(/[^\w\- ]+/g,'').trim()||'video'}.${ext}`,{type:v.type});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file]})}catch(e){}}
+      else{const a=document.createElement('a');a.href=u;a.download=file.name;a.click()}
+    };
+    const del=d.querySelector('[data-a=del]');
+    del.onclick=async()=>{if(del.dataset.c){await db.del(v.id);renderVideos()}else{del.dataset.c=1;del.textContent='¿Seguro? Toca otra vez';setTimeout(()=>{del.textContent='Eliminar';delete del.dataset.c},3000)}};
+    list.appendChild(d);
+  });
+}
+
+/* ---------- Guiones ---------- */
+const wc=t=>t.split(/\s+/).filter(Boolean).length;
+function renderScripts(){
+  const list=$('#scriptList');list.innerHTML='';
+  if(!scripts.length){list.innerHTML='<div class="empty">No tienes guiones.<br>Toca «+ Nuevo» para escribir el primero.</div>';return}
+  scripts.slice().sort((a,b)=>b.updated-a.updated).forEach(s=>{
+    const n=wc(s.body),mins=n/S.wpm;
+    const d=document.createElement('div');d.className='item'+(s.id===activeId?' active':'');
+    d.innerHTML=`<h3></h3><p></p><div class="meta">${n} palabras · ~${mins<1?Math.round(mins*60)+' s':mins.toFixed(1)+' min'}${s.id===activeId?' · En uso':''}</div>
+      <div class="row"><button class="btn" data-a="use">Usar</button><button class="btn ghost" data-a="edit">Editar</button></div>`;
+    d.querySelector('h3').textContent=s.title||'Sin título';d.querySelector('p').textContent=s.body;
+    d.querySelector('[data-a=use]').onclick=()=>{activeId=s.id;store.set('active',activeId);show('vRec')};
+    d.querySelector('[data-a=edit]').onclick=()=>openEdit(s.id);
+    list.appendChild(d);
+  });
+}
+let editing=null;
+function openEdit(id){
+  editing=id;const s=scripts.find(x=>x.id===id);
+  $('#edTitle').value=s?s.title:'';$('#edBody').value=s?s.body:'';
+  $('#editDel').hidden=!s;updMeta();show('vEdit');
+}
+function updMeta(){const n=wc($('#edBody').value);$('#edMeta').textContent=`${n} palabras · ~${(n/S.wpm).toFixed(1)} min a ${S.wpm} palabras/min`}
+$('#edBody').oninput=updMeta;
+function saveEdit(){
+  const title=$('#edTitle').value.trim()||'Sin título',body=$('#edBody').value.trim();
+  if(!body){toast('Escribe el texto del guion');return false}
+  let s=scripts.find(x=>x.id===editing);
+  if(s){s.title=title;s.body=body;s.updated=Date.now()}else{s={id:Date.now(),title,body,updated:Date.now()};scripts.push(s);editing=s.id}
+  store.set('scripts',scripts);toast('Guion guardado');return true;
+}
+$('#newScript').onclick=()=>openEdit(null);
+$('#editBack').onclick=()=>show('vScripts');
+$('#editSave').onclick=()=>{if(saveEdit())show('vScripts')};
+$('#editUse').onclick=()=>{if(saveEdit()){activeId=editing;store.set('active',activeId);show('vRec')}};
+$('#editDel').onclick=function(){
+  if(!this.dataset.c){this.dataset.c=1;this.textContent='¿Seguro? Toca otra vez';setTimeout(()=>{this.textContent='Eliminar';delete this.dataset.c},3000);return}
+  scripts=scripts.filter(x=>x.id!==editing);store.set('scripts',scripts);
+  if(activeId===editing){activeId=scripts[0]?.id;store.set('active',activeId)}
+  show('vScripts');
+};
+
+/* ---------- Ajustes ---------- */
+function renderSettings(){
+  document.querySelectorAll('#segMode button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.mode));
+  $('#sWpm').value=S.wpm;$('#wpmLbl').textContent=S.wpm+' palabras/min';
+  $('#sFs').value=S.fs;$('#fsLbl').textContent=S.fs+' px';
+  $('#sLines').value=S.lines;$('#lnLbl').textContent=S.lines+' líneas';
+  $('#sLang').value=S.lang;$('#sCount').checked=S.count;$('#sMirror').checked=S.mirror;$('#sRes').value=S.res;
+}
+document.querySelectorAll('#segMode button').forEach(b=>b.onclick=()=>{S.mode=b.dataset.v;saveS();renderSettings()});
+$('#sWpm').oninput=e=>{S.wpm=+e.target.value;saveS();renderSettings()};
+$('#sFs').oninput=e=>{S.fs=+e.target.value;saveS();renderSettings()};
+$('#sLines').oninput=e=>{S.lines=+e.target.value;saveS();renderSettings()};
+$('#sLang').onchange=e=>{S.lang=e.target.value;saveS()};
+$('#sCount').onchange=e=>{S.count=e.target.checked;saveS()};
+$('#sMirror').onchange=e=>{S.mirror=e.target.checked;saveS()};
+$('#sRes').onchange=e=>{S.res=e.target.value;saveS();if(stream)ensureCam(true)};
+
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&recording)stopRec()});
+show('vRec');
+})();
+</script>
+</body>
+</html>
